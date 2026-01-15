@@ -3,7 +3,7 @@ name: Daily Fetcher
 on:
   schedule:
     # Runs at 22:00 UTC (which is 00:00 Romania time)
-    - cron: "0 22 * * *"
+    - cron: "35 9 * * *"
   # Allows you to run it manually to test
   workflow_dispatch:
 
