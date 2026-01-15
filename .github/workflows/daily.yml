@@ -1,0 +1,30 @@
+name: Daily Fetcher
+
+on:
+  schedule:
+    # Runs at 22:00 UTC (which is 00:00 Romania time)
+    - cron: "0 22 * * *"
+  # Allows you to run it manually to test
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run script
+        env:
+          # This pulls the secret you saved in Settings
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+        run: python main.py
