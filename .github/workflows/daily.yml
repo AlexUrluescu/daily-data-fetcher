@@ -26,4 +26,6 @@ jobs:
         env:
           # This pulls the secret you saved in Settings
           DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+          USER_ID: ${{ secrets.USER_ID }}
+          USER_HASH: ${{ secrets.USER_HASH }}
         run: python main.py
