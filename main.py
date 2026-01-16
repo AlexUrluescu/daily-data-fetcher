@@ -1,19 +1,21 @@
 import os
 import requests
 import psycopg2
-from datetime import datetime
+import datetime 
 
 def get_api_intervals(date_range_tuple):
     if not date_range_tuple or len(date_range_tuple) != 2:
         return None, None
 
     start_date, end_date = date_range_tuple
-    now = datetime.now()
+    
+    now = datetime.datetime.now() 
 
-    if isinstance(start_date, datetime.date) and not isinstance(start_date, datetime):
-        start_date = datetime.combine(start_date, datetime.time.min)
-    if isinstance(end_date, datetime.date) and not isinstance(end_date, datetime):
-        end_date = datetime.combine(end_date, datetime.time.max)
+    if isinstance(start_date, datetime.date) and not isinstance(start_date, datetime.datetime):
+        start_date = datetime.datetime.combine(start_date, datetime.time.min)
+        
+    if isinstance(end_date, datetime.date) and not isinstance(end_date, datetime.datetime):
+        end_date = datetime.datetime.combine(end_date, datetime.time.max)
 
     start_seconds = int((now - start_date).total_seconds())
     stop_seconds = int((now - end_date).total_seconds())
@@ -24,10 +26,6 @@ def run_daily_job():
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
 
-    # 3. Pass "yesterday" as both start and end
-    # Your function handles 'dt.date' inputs by automatically setting:
-    # Start -> 00:00:00
-    # End   -> 23:59:59.999999
     start_interval, end_interval = get_api_intervals((yesterday, yesterday))
 
     print(f"Current System Date: {today}")
@@ -41,15 +39,7 @@ def run_daily_job():
         "X-User-hash": os.environ.get("USER_HASH")               
     }
 
-    # api_url = f"{API_URL}/1600013B/all/920914/834514"
-    # https://data.uradmonitor.com/api/v1/devices/1600013B/all/920914/834514
-    # response = requests.get(api_url, headers=api_headers, timeout=3)
-
     api_url = f"http://data.uradmonitor.com/api/v1/devices/1600013B/all/{start_interval}/{end_interval}"
-    # Example API call
-    # api_key = os.environ.get("MY_API_KEY")
-    # response = requests.get(f"https://api.example.com/data?key={api_key}")
-    # data = response.json()
 
     response = requests.get(api_url, headers=api_headers, timeout=3)
     api_data = response.json() 
@@ -66,9 +56,6 @@ def run_daily_job():
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
 
-        # --- 3. Create Table ---
-        # FIX 2: Changed latitude/longitude to REAL to preserve decimals
-        # FIX 3: Renamed columns to match API keys strictly (optional, but cleaner)
         create_table_query = """
         CREATE TABLE IF NOT EXISTS daily_stats_data (
             id SERIAL PRIMARY KEY,
@@ -96,7 +83,7 @@ def run_daily_job():
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
-        current_time = datetime.now()
+        current_time = datetime.datetime.now()
 
         for item in data_to_insert:
             cur.execute(insert_query, (
