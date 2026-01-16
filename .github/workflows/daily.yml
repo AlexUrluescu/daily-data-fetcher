@@ -2,7 +2,7 @@ name: Daily Fetcher
 
 on:
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "41 1 * * *"
   # Allows you to run it manually to test
   workflow_dispatch:
 
