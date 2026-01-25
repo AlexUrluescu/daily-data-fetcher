@@ -28,18 +28,20 @@ def init_db_table(cursor):
         CREATE TABLE IF NOT EXISTS daily_averages (
             id SERIAL PRIMARY KEY,
             sensor_id TEXT NOT NULL,
+            measurement_date DATE NOT NULL,
             temperature REAL,
             humidity REAL,
             pressure REAL,
             pm25 REAL,
             data_date DATE DEFAULT CURRENT_DATE,
-            fetched_at TIMESTAMP DEFAULT NOW()
+            fetched_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(sensor_id, measurement_date)
         );
     """
     cursor.execute(create_table_query)
 
 
-def insert_average(cursor, sensor_id, avg_data):
+def insert_average(cursor, sensor_id, avg_data, date_obj,):
     insert_query = """
         INSERT INTO daily_averages (sensor_id, temperature, humidity, pressure, pm25, fetched_at)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -47,6 +49,7 @@ def insert_average(cursor, sensor_id, avg_data):
     
     cursor.execute(insert_query, (
         sensor_id,
+        date_obj,
         avg_data['temperature'],
         avg_data['humidity'],
         avg_data['pressure'],
@@ -138,7 +141,7 @@ def run_daily_job():
             averages = calculate_averages(data_points)
                 
             if averages:
-                    insert_average(cur, sensor_id, averages)
+                    insert_average(cur, sensor_id, averages, yesterday)
                     conn.commit()
             else:
                     print(f" -> Could not calculate averages (empty or malformed data)")
