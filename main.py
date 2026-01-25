@@ -2,6 +2,7 @@ import os
 import requests
 import psycopg2
 import datetime 
+import statistics
 
 def get_api_intervals(date_range_tuple):
     if not date_range_tuple or len(date_range_tuple) != 2:
@@ -22,7 +23,72 @@ def get_api_intervals(date_range_tuple):
 
     return max(0, start_seconds), max(0, stop_seconds)
 
+def init_db_table(cursor):
+    create_table_query = """
+        CREATE TABLE IF NOT EXISTS daily_averages (
+            id SERIAL PRIMARY KEY,
+            sensor_id TEXT NOT NULL,
+            temperature REAL,
+            humidity REAL,
+            pressure REAL,
+            pm25 REAL,
+            data_date DATE DEFAULT CURRENT_DATE,
+            fetched_at TIMESTAMP DEFAULT NOW()
+        );
+    """
+    cursor.execute(create_table_query)
+
+
+def insert_average(cursor, sensor_id, avg_data):
+    insert_query = """
+        INSERT INTO daily_averages (sensor_id, temperature, humidity, pressure, pm25, fetched_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    
+    cursor.execute(insert_query, (
+        sensor_id,
+        avg_data['temperature'],
+        avg_data['humidity'],
+        avg_data['pressure'],
+        avg_data['pm25'],
+        datetime.datetime.now()
+    ))
+    print(f" -> Inserted averages for {sensor_id}")
+
+
+def calculate_averages(data):
+    """
+    Iterates through the list of sensor data points and calculates the mean
+    for temperature, humidity, pressure, and pm25.
+    """
+    if not data or len(data) == 0:
+        return None
+
+    temps, hums, press, pm25s = [], [], [], []
+
+    for item in data:
+        try:
+            if 'temperature' in item: temps.append(float(item['temperature']))
+            if 'humidity' in item:    hums.append(float(item['humidity']))
+            if 'pressure' in item:    press.append(float(item['pressure']))
+            if 'pm25' in item:        pm25s.append(float(item['pm25']))
+        except (ValueError, TypeError):
+            continue 
+
+    if not temps: 
+        return None
+
+    return {
+        "temperature": statistics.mean(temps) if temps else 0,
+        "humidity": statistics.mean(hums) if hums else 0,
+        "pressure": statistics.mean(press) if press else 0,
+        "pm25": statistics.mean(pm25s) if pm25s else 0
+    }
+
+
 def run_daily_job():
+    print("Connecting to Supabase...")
+    db_url = os.environ.get("DB_CONNECTION_STRING")
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
 
@@ -34,82 +100,56 @@ def run_daily_job():
 
     print("Fetching data...")
 
-    api_headers = {
-        "X-User-id":  os.environ.get("USER_ID"),
-        "X-User-hash": os.environ.get("USER_HASH")               
-    }
-
-    api_url = f"http://data.uradmonitor.com/api/v1/devices/1600013B/all/{start_interval}/{end_interval}"
-
-    response = requests.get(api_url, headers=api_headers, timeout=3)
-    api_data = response.json() 
-
-    if isinstance(api_data, list) and len(api_data) > 0 and isinstance(api_data[0], list):
-        data_to_insert = api_data[0]
-    else:
-        data_to_insert = api_data
-
-    print("Connecting to Supabase...")
-    db_url = os.environ.get("DB_CONNECTION_STRING")
-    
     try:
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
-
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS daily_stats_data (
-            id SERIAL PRIMARY KEY,
-            time INTEGER,
-            latitude REAL,
-            longitude REAL,
-            altitude INTEGER,
-            timelocal INTEGER,
-            temperature REAL,
-            humidity REAL,
-            pressure REAL,
-            pm1 REAL,
-            pm25 REAL,
-            pm10 REAL,
-            fetched_at TIMESTAMP DEFAULT NOW()
-        );
-        """
-        cur.execute(create_table_query)
+            
+        init_db_table(cur)
         conn.commit()
 
-        print("Inserting data...")
-        
-        insert_query = """
-        INSERT INTO daily_stats_data (time, latitude, longitude, altitude, timelocal, temperature, humidity, pressure, pm1, pm25, pm10, fetched_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        
-        current_time = datetime.datetime.now()
+        api_headers = {
+            "X-User-id":  os.environ.get("USER_ID"),
+            "X-User-hash": os.environ.get("USER_HASH")               
+        }
 
-        for item in data_to_insert:
-            cur.execute(insert_query, (
-                item["time"],
-                item["latitude"],
-                item["longitude"],
-                item["altitude"],
-                item["timelocal"],   
-                item["temperature"],
-                item["humidity"],
-                item["pressure"],
-                item["pm1"],
-                item["pm25"],       
-                item["pm10"],
-                current_time
-            ))
+        sensors_ids = ["1600013B", "1600019F", "16000284", "16000224", "16000341", "16000342", "16000343", "16000344", "8200029B"]
 
-        conn.commit()
-        print(f"Success! Inserted {len(data_to_insert)} rows.")
+        for sensor_id in sensors_ids:
+            print(f"\nProcessing Sensor: {sensor_id}...")
+                
+            api_url = f"http://data.uradmonitor.com/api/v1/devices/{sensor_id}/all/{start_interval}/{end_interval}"
+            try:
+                    response = requests.get(api_url, headers=api_headers, timeout=10)
+                    response.raise_for_status()
+                    api_data = response.json()
+            except Exception as e:
+                    print(f" -> API Error for {sensor_id}: {e}")
+                    continue
+            data_points = []
+            if isinstance(api_data, list):
+                if len(api_data) > 0 and isinstance(api_data[0], list):
+                    data_points = api_data[0]
+                else:
+                    data_points = api_data
+            if not data_points:
+                    print(f" -> No data found for sensor {sensor_id}")
+                    continue
 
-        cur.close()
-        conn.close()
+            averages = calculate_averages(data_points)
+                
+            if averages:
+                    insert_average(cur, sensor_id, averages)
+                    conn.commit()
+            else:
+                    print(f" -> Could not calculate averages (empty or malformed data)")
 
     except Exception as e:
-        print(f"Error: {e}")
-        raise e
+        print(f"Critical Database Error: {e}")
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+        print("Database connection closed.")
+
 
 if __name__ == "__main__":
     run_daily_job()
