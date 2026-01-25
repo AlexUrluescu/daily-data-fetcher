@@ -41,7 +41,7 @@ def init_db_table(cursor):
     cursor.execute(create_table_query)
 
 
-def insert_average(cursor, sensor_id, avg_data, date_obj,):
+def insert_average(cursor, sensor_id, avg_data, date_obj):
     insert_query = """
         INSERT INTO daily_averages (sensor_id, temperature, humidity, pressure, pm25, fetched_at)
         VALUES (%s, %s, %s, %s, %s, %s)
